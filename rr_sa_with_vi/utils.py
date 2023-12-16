@@ -1,101 +1,139 @@
+import scipy
+import math
 import numpy as np
 import os
 import pickle
 import random
-import scipy.sparse
-
-
-def set_seed(seed=42):
-    """
-    Set the seed for reproducibility.
-    """
-    random.seed(seed)
-    np.random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
 
 
 def safe_sparse_add(a, b):
     """
-    Safely add two matrices, supporting sparse matrices.
+    Adds two arrays or sparse matrices, ensuring the result remains sparse if both inputs are sparse.
+
+    Args:
+        a (numpy.ndarray or scipy.sparse matrix): The first addend.
+        b (numpy.ndarray or scipy.sparse matrix): The second addend.
+
+    Returns:
+        numpy.ndarray or scipy.sparse matrix: The sum of a and b.
     """
     if scipy.sparse.issparse(a) and scipy.sparse.issparse(b):
+        # both are sparse, keep the result sparse
         return a + b
     else:
+        # one of them is non-sparse, convert everything to dense.
         if scipy.sparse.issparse(a):
             a = a.toarray()
+            if a.ndim == 2 and b.ndim == 1:
+                b = b.ravel()
         elif scipy.sparse.issparse(b):
             b = b.toarray()
+            if b.ndim == 2 and a.ndim == 1:
+                b = b.ravel()
         return a + b
 
 
 def safe_sparse_dot(a, b):
     """
-    Safely compute dot product, supporting sparse matrices.
+    Computes the dot product of two arrays or sparse matrices, ensuring the result remains dense.
+
+    Args:
+        a (numpy.ndarray or scipy.sparse matrix): The first operand.
+        b (numpy.ndarray or scipy.sparse matrix): The second operand.
+
+    Returns:
+        numpy.ndarray: The dot product of a and b.
     """
+    if scipy.sparse.issparse(a) and scipy.sparse.issparse(b):
+        # special cases for sparse dot product
+        if a.shape[1] == b.shape[0]:
+            return (a @ b)[0, 0]
+        if a.shape[0] == b.shape[0]:
+            return (a.T @ b)[0, 0]
+        return (a @ b.T)[0, 0]
     if scipy.sparse.issparse(a):
         a = a.toarray()
-    if scipy.sparse.issparse(b):
+    elif scipy.sparse.issparse(b):
         b = b.toarray()
-    return np.dot(a, b)
+    return a @ b
+
+
+def safe_sparse_multiply(a, b):
+    """
+    Multiplies two arrays or sparse matrices element-wise, ensuring the result remains sparse if both inputs are sparse.
+
+    Args:
+        a (numpy.ndarray or scipy.sparse matrix): The first multiplicand.
+        b (numpy.ndarray or scipy.sparse matrix): The second multiplicand.
+
+    Returns:
+        numpy.ndarray or scipy.sparse matrix: The element-wise product of a and b.
+    """
+    if scipy.sparse.issparse(a) and scipy.sparse.issparse(b):
+        return a.multiply(b)
+    if scipy.sparse.issparse(a):
+        a = a.toarray()
+    elif scipy.sparse.issparse(b):
+        b = b.toarray()
+    return np.multiply(a, b)
 
 
 def safe_sparse_norm(a, ord=None):
     """
-    Compute the norm of an array, supporting sparse matrices.
+    Computes the norm of an array or sparse matrix.
+
+    Args:
+        a (numpy.ndarray or scipy.sparse matrix): The input array or sparse matrix.
+        ord (int, float, inf, -inf, 'fro', 'nuc', optional): The order of the norm.
+
+    Returns:
+        float: The norm of the input array or sparse matrix.
     """
     if scipy.sparse.issparse(a):
         return scipy.sparse.linalg.norm(a, ord=ord)
     return np.linalg.norm(a, ord=ord)
 
 
-def relative_round(x, precision=3):
+def relative_round(x):
     """
-    Round a number to a relative precision.
+    Rounds a number to three significant figures.
+
+    Args:
+        x (float): The number to be rounded.
+
+    Returns:
+        float: The rounded number.
     """
-    return round(x, precision - int(np.floor(np.log10(abs(x)))) - 1)
+    mantissa, exponent = math.frexp(x)
+    return round(mantissa, 3) * 2**exponent
 
 
-def get_trace(file_path):
+def get_trace(path, loss):
     """
-    Load a trace from a file.
+    Loads a trace object from a file and sets its loss attribute.
+
+    Args:
+        path (str): The path to the file containing the trace object.
+        loss: The loss object to be set for the trace.
+
+    Returns:
+        object: The loaded trace object with the loss set, or None if the file does not exist.
     """
-    if not os.path.isfile(file_path):
+    if not os.path.isfile(path):
         return None
-    with open(file_path, 'rb') as file:
-        trace = pickle.load(file)
+    with open(path, 'rb') as f:
+        trace = pickle.load(f)
+        trace.loss = loss
     return trace
 
 
-def save_trace(trace, file_path):
+def set_seed(seed=42):
     """
-    Save a trace to a file.
+    Sets the random seed for the random, numpy, and os modules to ensure reproducibility.
+
+    Args:
+        seed (int): The seed value to set. Defaults to 42.
     """
-    with open(file_path, 'wb') as file:
-        pickle.dump(trace, file)
-
-
-def variance_at_opt(x_opt, loss, batch_size=1, n_perms=1, lr=None):
-    """
-    Calculate variance at the optimum.
-    """
-    if lr is None:
-        lr = 1 / loss.smoothness()
-
-    perms = [np.random.permutation(loss.n) for _ in range(n_perms)]
-    variances = []
-
-    for perm in perms:
-        grad_sum = 0
-        variance = 0
-
-        for i in range(0, loss.n, batch_size):
-            idx = perm[i:i + batch_size]
-            stoch_grad = loss.stochastic_gradient(x_opt, idx=idx)
-            grad_sum += stoch_grad
-
-            x = x_opt - lr * grad_sum
-            variance += np.sum((loss.partial_value(x, idx) - loss.partial_value(x_opt, idx)) ** 2)
-
-        variances.append(variance / loss.n)
-
-    return np.mean(variances)
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
