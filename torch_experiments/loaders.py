@@ -34,14 +34,17 @@ class CustomDataLoader:
     def __iter__(self):
         self.cnt = 0
         return self
-    
+
     def __len__(self):
         return self.n_iterations
+
+    def _get_next_batch_idx(self):
+        return torch.randint(low=0, high=self.n_batches - 1, size=(1,))
 
     def __next__(self):
         if self.cnt == self.n_iterations:
             raise StopIteration
-        i = torch.randint(low=0, high=self.n_batches - 1, size=(1,))
+        i = self._get_next_batch_idx()
         x = []
         y = []
         for j in range(
@@ -53,5 +56,20 @@ class CustomDataLoader:
             y.append(c_y)
 
         self.cnt += 1
-        
+
         return self.collate_fn(x, y)
+
+
+class ShuffleOnce(CustomDataLoader):
+    def __init__(self, dataset: Dataset, batch_size: int = 1, collate_fn=None) -> None:
+        super().__init__(dataset=dataset, batch_size=batch_size, collate_fn=collate_fn)
+        self.order = torch.randperm(n=self.n_batches)
+
+    def _get_next_batch_idx(self):
+        return self.order[self.cnt]
+
+
+class RandomReshuffling(ShuffleOnce):
+    def __iter__(self):
+        self.order = torch.randperm(n=self.n_batches)
+        return super().__iter__()
