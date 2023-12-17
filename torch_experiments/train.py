@@ -1,28 +1,28 @@
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-
-from optimizers.IARVR import ProxFinito
+from torch.optim import Optimizer
 
 
 def train_model(
-    dataloader: DataLoader, model, loss_fn, optimizer: ProxFinito, device="cpu"
+    dataloader: DataLoader, model, loss_fn, optimizer: Optimizer, device="cpu"
 ):
     device = torch.device(device)
     model.to(device)
     bar = tqdm(total=len(dataloader))
     loss_data = []
     model.train()
+    
+
     for i, (data, label) in enumerate(dataloader):
         optimizer.zero_grad()
-        data = data.flatten(start_dim=1).to(device)
+        data = data.to(device)
+        # data = data.flatten(start_dim=1).to(device)
         label = label.to(device)
 
         output = model(data)
         loss = loss_fn(output, label)
         loss.backward()
-
-        # optimizer.step(i)
         optimizer.step()
 
         loss_data.append(loss.detach().cpu())
@@ -33,7 +33,7 @@ def train_model(
 
 
 
-def test_model(dataloader: DataLoader, model, loss_fn, reg_fn, device="cpu"):
+def test_model(dataloader: DataLoader, model, loss_fn, device="cpu"):
     bar = tqdm(total=len(dataloader))
     loss_data = []
     device = torch.device(device)
@@ -44,11 +44,12 @@ def test_model(dataloader: DataLoader, model, loss_fn, reg_fn, device="cpu"):
     total = 0
     with torch.no_grad():
         for i, (data, label) in enumerate(dataloader):
-            data = data.flatten(start_dim=1).to(device)
+            data = data.to(device)
+            # data = data.flatten(start_dim=1).to(device)
             label = label.to(device)
 
             output = model(data)
-            loss = loss_fn(output, label) + reg_fn()
+            loss = loss_fn(output, label)
 
             pred = output.argmax(dim=1)
             tp += (pred == label).sum()
